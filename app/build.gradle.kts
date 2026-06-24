@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-  namespace = "com.gmap"
+  namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.gmap"
+    applicationId = "com.example"
     minSdk = 24
     targetSdk = 36
     versionCode = 1
