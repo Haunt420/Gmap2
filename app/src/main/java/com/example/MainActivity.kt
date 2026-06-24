@@ -29,6 +29,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
@@ -56,6 +59,7 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NetInsightApp() {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var targetIp by remember { mutableStateOf("192.168.1.0/24") }
     var tcpSynScan by remember { mutableStateOf(true) }
     var osDetection by remember { mutableStateOf(false) }
@@ -384,7 +388,20 @@ fun NetInsightApp() {
                     .offset(y = (-24).dp)
             ) {
                 IconButton(
-                    onClick = { isScanning = !isScanning },
+                    onClick = { 
+                        isScanning = !isScanning 
+                        if (isScanning) {
+                            val intent = android.content.Intent(context, com.example.service.NmapForegroundService::class.java)
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                context.startForegroundService(intent)
+                            } else {
+                                context.startService(intent)
+                            }
+                        } else {
+                            val intent = android.content.Intent(context, com.example.service.NmapForegroundService::class.java)
+                            context.stopService(intent)
+                        }
+                    },
                     modifier = Modifier
                         .size(56.dp)
                         .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
@@ -545,7 +562,24 @@ fun MockTopologyCanvas(modifier: Modifier = Modifier) {
         }
     }
 
-    Canvas(modifier = modifier.onSizeChanged { canvasSize = it }) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val transformableState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, offsetChange, _ ->
+        scale = (scale * zoomChange).coerceIn(0.5f, 5f)
+        offset += offsetChange
+    }
+
+    Canvas(
+        modifier = modifier
+            .onSizeChanged { canvasSize = it }
+            .transformable(state = transformableState)
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+    ) {
         // use frame to recompose
         val currentFrame = frame
         
