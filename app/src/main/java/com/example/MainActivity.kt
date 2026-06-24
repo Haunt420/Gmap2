@@ -29,6 +29,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.HostEntity
+import com.example.viewmodel.NetViewModel
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.graphics.graphicsLayer
@@ -58,9 +62,11 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NetInsightApp() {
+fun NetInsightApp(viewModel: NetViewModel = viewModel()) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var targetIp by remember { mutableStateOf("192.168.1.0/24") }
+    
+    val allHosts by viewModel.allHosts.collectAsState(initial = emptyList())
     var tcpSynScan by remember { mutableStateOf(true) }
     var osDetection by remember { mutableStateOf(false) }
     var fragmentPackets by remember { mutableStateOf(false) }
@@ -175,21 +181,23 @@ fun NetInsightApp() {
                 .padding(16.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(32.dp))
         ) {
-            if (isScanning) {
-                MockTopologyCanvas(modifier = Modifier.fillMaxSize())
+            if (isScanning || allHosts.isNotEmpty()) {
+                MockTopologyCanvas(hosts = allHosts, modifier = Modifier.fillMaxSize())
 
                 // Floating Status Pill
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 16.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50))
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(modifier = Modifier.size(6.dp).background(Color(0xFF34D399), RoundedCornerShape(50)))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("SYN SCAN ACTIVE · 64%", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)
+                if (isScanning) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 16.dp)
+                            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50))
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).background(Color(0xFF34D399), RoundedCornerShape(50)))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("SYN SCAN ACTIVE · DISCOVERING", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)
+                    }
                 }
             } else {
                 Column(
@@ -391,7 +399,9 @@ fun NetInsightApp() {
                     onClick = { 
                         isScanning = !isScanning 
                         if (isScanning) {
-                            val intent = android.content.Intent(context, com.example.service.NmapForegroundService::class.java)
+                            val intent = android.content.Intent(context, com.example.service.NmapForegroundService::class.java).apply {
+                                putExtra("TARGET_SCOPE", targetIp)
+                            }
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                 context.startForegroundService(intent)
                             } else {
@@ -446,38 +456,46 @@ data class NetEdge(
 )
 
 @Composable
-fun MockTopologyCanvas(modifier: Modifier = Modifier) {
+fun MockTopologyCanvas(hosts: List<HostEntity>, modifier: Modifier = Modifier) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     
-    val nodes = remember {
-        listOf(
-            NetNode("router", color = Color(0xFF06B6D4)),
-            NetNode("node1", color = Color(0xFF34D399)),
-            NetNode("node2", color = Color(0xFFFB7185)),
-            NetNode("node3", color = Color(0xFFFBBF24))
-        )
-    }
-    
-    val edges = remember {
-        listOf(
-            NetEdge(nodes[0], nodes[1]),
-            NetEdge(nodes[0], nodes[2]),
-            NetEdge(nodes[0], nodes[3]),
-            NetEdge(nodes[1], nodes[3])
-        )
+    val nodes = remember { androidx.compose.runtime.mutableStateListOf<NetNode>() }
+    val edges = remember { androidx.compose.runtime.mutableStateListOf<NetEdge>() }
+
+    // Sync database hosts to the physics engine nodes
+    LaunchedEffect(hosts) {
+        val existingIps = nodes.map { it.id }.toSet()
+        val newHosts = hosts.filter { it.ipAddress !in existingIps }
+        
+        if (nodes.isEmpty() && hosts.isNotEmpty()) {
+            nodes.add(NetNode("router_gateway", color = Color(0xFF06B6D4)))
+        }
+        
+        newHosts.forEach { host ->
+            val isRouter = host.osGuess?.contains("Router") == true
+            val color = if (isRouter) Color(0xFFFB7185) else Color(0xFF34D399)
+            val newNode = NetNode(host.ipAddress, color = color)
+            nodes.add(newNode)
+            
+            val router = nodes.firstOrNull { it.id == "router_gateway" }
+            if (router != null && newNode.id != router.id) {
+                edges.add(NetEdge(router, newNode))
+            }
+        }
     }
 
-    LaunchedEffect(canvasSize) {
+    LaunchedEffect(canvasSize, nodes.size) {
         if (canvasSize == IntSize.Zero) return@LaunchedEffect
         
         val width = canvasSize.width.toFloat()
         val height = canvasSize.height.toFloat()
         
         nodes.forEach {
-            if (it.id == "router") {
+            if (it.id == "router_gateway") {
                 it.x = width / 2f
                 it.y = height / 2f
-            } else {
+            } else if (it.x == 0f && it.y == 0f) {
+                // Initialize new nodes near the center
                 it.x = width / 2f + (Random.nextFloat() - 0.5f) * 100f
                 it.y = height / 2f + (Random.nextFloat() - 0.5f) * 100f
             }
@@ -529,7 +547,7 @@ fun MockTopologyCanvas(modifier: Modifier = Modifier) {
 
                 // Center gravity and bounds, update positions
                 nodes.forEach { n ->
-                    if (n.id == "router") {
+                    if (n.id == "router_gateway") {
                         // Keep router near center
                         n.x += (width / 2f - n.x) * 0.1f
                         n.y += (height / 2f - n.y) * 0.1f
@@ -610,7 +628,7 @@ fun MockTopologyCanvas(modifier: Modifier = Modifier) {
 
         // Draw Nodes
         nodes.forEach { node ->
-            val isRouter = node.id == "router"
+            val isRouter = node.id == "router_gateway"
             val radius = if (isRouter) 24.dp.toPx() else 16.dp.toPx()
             
             drawCircle(

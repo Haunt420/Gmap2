@@ -32,6 +32,9 @@ interface NetDao {
     @Query("SELECT * FROM script_results WHERE portId = :portId")
     fun getScriptResultsForPort(portId: Long): Flow<List<ScriptResultEntity>>
 
+    @Query("SELECT * FROM hosts")
+    fun getAllHosts(): Flow<List<HostEntity>>
+
     // Search query joining hosts and ports as per DESIGN.md
     @Transaction
     @Query("""

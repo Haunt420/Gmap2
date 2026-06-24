@@ -21,7 +21,8 @@ data class ScanEntity(
             childColumns = ["scanId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index("scanId")]
 )
 data class HostEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -41,7 +42,8 @@ data class HostEntity(
             childColumns = ["hostId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index("hostId")]
 )
 data class PortEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -61,7 +63,8 @@ data class PortEntity(
             childColumns = ["portId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index("portId")]
 )
 data class ScriptResultEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
